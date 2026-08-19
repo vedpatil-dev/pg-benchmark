@@ -19,6 +19,9 @@ async function runMultiUserWorker(pool, queries, deadline, metrics) {
     let connAcquireMs = 0;
     try {
       client = await pool.connect();
+      client.on('error', () => {
+        // Suppress unhandled error event emitted by Client instance on server kill
+      });
       const t1 = process.hrtime.bigint();
       connAcquireMs = Number(t1 - t0) / 1e6;
 
@@ -37,12 +40,12 @@ async function runMultiUserWorker(pool, queries, deadline, metrics) {
       metrics.successCount++;
     } catch (err) {
       metrics.errorCount++;
-      if (!metrics.errors[err.message]) {
-        metrics.errors[err.message] = 0;
-      }
-      metrics.errors[err.message]++;
+      const msg = err.message || 'Unknown Error';
+      metrics.errors[msg] = (metrics.errors[msg] || 0) + 1;
     } finally {
-      if (client) client.release();
+      if (client) {
+        try { client.release(true); } catch (_) {}
+      }
     }
   }
 }
@@ -57,6 +60,10 @@ async function runMultiUserLevel(userCount, durationSeconds, queries) {
     max: userCount,
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 10000,
+  });
+
+  pool.on('error', (err) => {
+    // Suppress unhandled pool error events when PostgreSQL server terminates idle connections
   });
 
   const metrics = {
@@ -76,7 +83,7 @@ async function runMultiUserLevel(userCount, durationSeconds, queries) {
   const startedAt = Date.now();
   await Promise.all(workers);
   const elapsedSeconds = (Date.now() - startedAt) / 1000;
-  await pool.end();
+  try { await pool.end(); } catch (_) {}
 
   const connWaitStats = summarize(metrics.connWaits);
   const execStats = summarize(metrics.execTimes);
@@ -90,7 +97,7 @@ async function runMultiUserLevel(userCount, durationSeconds, queries) {
     totalQueries: metrics.successCount + metrics.errorCount,
     successCount: metrics.successCount,
     errorCount: metrics.errorCount,
-    tps: metrics.successCount / elapsedSeconds,
+    tps: elapsedSeconds > 0 ? metrics.successCount / elapsedSeconds : 0,
     connWaitStats,
     execStats,
     totalStats,

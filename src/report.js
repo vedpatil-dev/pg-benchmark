@@ -260,6 +260,8 @@ function buildConcurrencySheet(wb, levelResults, sql) {
     'P95 (ms)',
     'P99 (ms)',
     'Max (ms)',
+    'Errors / Drops',
+    'Last Error Message',
     'Docker CPU %',
     'Docker Mem %',
   ]);
@@ -275,6 +277,8 @@ function buildConcurrencySheet(wb, levelResults, sql) {
       round(r.p95),
       round(r.p99),
       round(r.max),
+      r.errors || 0,
+      r.lastError || 'None',
       r.dockerStats ? r.dockerStats.cpuPerc : 'n/a',
       r.dockerStats ? r.dockerStats.memPerc : 'n/a',
     ])

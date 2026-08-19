@@ -6,23 +6,11 @@ async function ensureExtension() {
     await pool.query('CREATE EXTENSION IF NOT EXISTS pg_stat_statements;');
     return true;
   } catch (err) {
-    console.error('\nCould not enable pg_stat_statements:', err.message);
-    console.error(
-      [
-        'This usually means it is not in shared_preload_libraries yet. To fix:',
-        '  1. ALTER SYSTEM SET shared_preload_libraries = \'pg_stat_statements\';',
-        '  2. Restart the container: docker restart ' + (config.dockerContainer || '<your_container>'),
-        '  3. Then: CREATE EXTENSION IF NOT EXISTS pg_stat_statements;',
-        '  4. Re-run this benchmark.',
-      ].join('\n')
-    );
+    console.log('Note: pg_stat_statements extension not available. Benchmarking specified SQL queries directly.');
     return false;
   }
 }
 
-// pg_stat_statements normalizes literals to $1, $2, ... We can't safely re-execute
-// those without knowing real parameter values, so we separate runnable (plain SELECTs,
-// no placeholders) from parameterized (reported from stats only, not re-executed).
 function classify(row) {
   const q = row.query.trim();
   const isSelect = /^select\b/i.test(q);
@@ -33,27 +21,32 @@ function classify(row) {
 }
 
 async function fetchTopQueries() {
+  let statQueries = [];
   const hasExtension = await ensureExtension();
-  if (!hasExtension) return [];
-
-  const { rows } = await pool.query(
-    `SELECT
-        query,
-        calls,
-        total_exec_time,
-        mean_exec_time,
-        min_exec_time,
-        max_exec_time,
-        stddev_exec_time,
-        rows
-     FROM pg_stat_statements
-     WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
-       AND calls >= $1
-     ORDER BY total_exec_time DESC
-     LIMIT $2;`,
-    [config.minCalls, config.topN]
-  );
-  const statQueries = rows.map((r, i) => ({ id: `Q${String(i + 1).padStart(2, '0')}`, ...classify(r) }));
+  if (hasExtension) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT
+            query,
+            calls,
+            total_exec_time,
+            mean_exec_time,
+            min_exec_time,
+            max_exec_time,
+            stddev_exec_time,
+            rows
+         FROM pg_stat_statements
+         WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+           AND calls >= $1
+         ORDER BY total_exec_time DESC
+         LIMIT $2;`,
+        [config.minCalls, config.topN]
+      );
+      statQueries = rows.map((r, i) => ({ id: `Q${String(i + 1).padStart(2, '0')}`, ...classify(r) }));
+    } catch (err) {
+      console.warn('Note: Could not query pg_stat_statements:', err.message);
+    }
+  }
 
   const customQueries = config.customQueries.map((sql, i) => ({
     id: `CQ${String(i + 1).padStart(2, '0')}`,
