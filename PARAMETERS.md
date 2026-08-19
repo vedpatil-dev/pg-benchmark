@@ -1,6 +1,6 @@
 # PostgreSQL Query Performance Benchmark Tool (pg-benchmark) - Complete Guide & Parameter Reference
 
-This document explains **what each report sheet shows**, **what every column name denotes**, **the technical meaning of metrics**, and **how to judge whether database performance is GOOD or BAD**.
+This document explains **what each report sheet shows**, **what every column name denotes**, **the technical meaning of metrics**, **how to judge performance**, and **what happens if Docker is not used**.
 
 ---
 
@@ -99,7 +99,17 @@ This document explains **what each report sheet shows**, **what every column nam
 
 ---
 
-## Part 4: Quick Summary Table for Judging Benchmark Results
+## Part 4: Docker Requirements (What if Docker is NOT installed?)
+
+> **Docker is 100% OPTIONAL**. **pg-benchmark** connects to PostgreSQL using standard TCP/IP network protocol.
+> - Works with **local PostgreSQL**, **remote servers**, **AWS RDS**, **GCP Cloud SQL**, or **Azure**.
+> - Simply leave `DOCKER_CONTAINER=` empty in `.env`.
+> - All SQL benchmarks, EXPLAIN ANALYZE plan profiling, buffer hit ratios, latency percentiles (`P95`), concurrency load sweeps, and Excel exports run with **100% full functionality**.
+> - In the report, Docker CPU/RAM stats will simply show `'n/a'`.
+
+---
+
+## Part 5: Quick Summary Table for Judging Benchmark Results
 
 | Metric Header | Ideal Good Value | Problem Value | Action Required |
 |---|---|---|---|
