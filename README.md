@@ -62,20 +62,21 @@ This will:
 5. If `CONCURRENCY_LEVELS` is set, runs a TPS/latency sweep at each connection level.
 6. Writes `benchmark-report.xlsx` (or your configured `OUTPUT_FILE`).
 
-## Config reference (`.env`)
+## Config Reference & Documentation
 
-| Variable | Default | Notes |
+For a detailed explanation of all connection settings, CLI flags, benchmark tuning parameters, and Excel report metric definitions, see [PARAMETERS.md](file:///home/ved1345/Documents/Emgage/postgress_test/pg-benchmark/PARAMETERS.md).
+
+| Variable / CLI Flag | Default | Description |
 |---|---|---|
-| `PGHOST` / `PGPORT` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` | — | Standard connection info |
-| `DOCKER_CONTAINER` | — | Optional container name, used for `docker stats` / `docker inspect` snapshots |
-| `TOP_N_QUERIES` | 20 | How many queries to pull from `pg_stat_statements` |
-| `MIN_CALLS` | 5 | Ignore queries called fewer times than this |
-| `WARMUP_RUNS` | 10 | Discarded runs before measurement starts |
-| `MEASURED_RUNS` | 100 | Runs used for percentile calculation |
-| `CONCURRENCY_LEVELS` | (empty = skip) | e.g. `1,5,10,25,50,100` |
-| `CONCURRENCY_DURATION_SECONDS` | 5 | How long to hammer each concurrency level |
-| `CONCURRENCY_QUERY` | `top` | `top` = highest total_exec_time query, or paste a literal SQL string |
-| `OUTPUT_FILE` | `benchmark-report.xlsx` | Output path |
+| `PGHOST` / `PGPORT` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` (`-d`) | — | Standard connection parameters |
+| `[sql_file]` / `-f` / `--file` | Auto-discovery | SQL file path to benchmark (or scans all `.sql` files in repo) |
+| `-q` / `--query` | — | Direct SQL statement to benchmark |
+| `WARMUP_RUNS` / `--warmup` | 10 | Discarded initial runs before measurement |
+| `MEASURED_RUNS` / `--runs` | 100 | Measured runs per query for latency percentiles |
+| `CONCURRENCY_LEVELS` / `-c` | (disabled) | e.g. `10,25,50,100,200,300,500` |
+| `CONCURRENCY_DURATION_SECONDS` / `--duration` | 5 | Duration in seconds per concurrency level |
+| `OUTPUT_FILE` / `-o` | `benchmark-report.xlsx` | Excel output report path |
+
 
 ## Notes / things worth knowing
 
