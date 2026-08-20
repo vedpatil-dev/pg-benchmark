@@ -24,25 +24,25 @@ async function main() {
   const runnableCount = queries.filter((q) => q.runnable).length;
   console.log(`  Found ${queries.length} queries: ${runnableCount} runnable, ${queries.length - runnableCount} parameterized/skipped.\n`);
 
-  console.log('Benchmarking each runnable query...');
-  const benchmarked = await benchmarkAll(queries);
-
+  let benchmarked = [];
   let concurrencyResults = [];
   let concurrencySql = null;
-  if (config.concurrencyLevels.length) {
-    const target = config.concurrencyQuery === 'top'
-      ? benchmarked.find((q) => !q.skipped && !q.error)
-      : { query: config.concurrencyQuery };
-    if (target) {
-      concurrencySql = target.query;
-      concurrencyResults = await runConcurrencySweep(concurrencySql);
-    } else {
-      console.warn('\nSkipping concurrency sweep: no runnable query available to use as the target.');
-    }
+  let multiUserResults = [];
+
+  if (!config.concurrencyLevels.length || config.fullBenchmark) {
+    console.log('Benchmarking each runnable query (Full Profiling)...');
+    benchmarked = await benchmarkAll(queries);
   }
 
-  let multiUserResults = [];
   if (config.concurrencyLevels.length) {
+    console.log(`\nSimulating User Load Test for connection level(s): [${config.concurrencyLevels.join(', ')}] ...`);
+
+    const targetQuery = config.concurrencyQuery === 'top'
+      ? (benchmarked.find((q) => !q.skipped && !q.error)?.query || queries.find((q) => q.runnable)?.query || config.customQueries[0] || 'SELECT 1;')
+      : config.concurrencyQuery;
+
+    concurrencySql = targetQuery;
+    concurrencyResults = await runConcurrencySweep(concurrencySql);
     multiUserResults = await runMultiUserSimulation();
   }
 

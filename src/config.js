@@ -28,6 +28,7 @@ let cliDuration = null;
 let cliOutput = null;
 let cliMeasuredRuns = null;
 let cliWarmupRuns = null;
+let cliFullBenchmark = false;
 let showHelp = false;
 
 for (let i = 0; i < args.length; i++) {
@@ -48,8 +49,13 @@ for (let i = 0; i < args.length; i++) {
     cliUser = args[++i];
   } else if (arg === '-W' || arg === '--password') {
     cliPassword = args[++i];
-  } else if (arg === '-c' || arg === '--concurrency') {
+  } else if (arg === '-c' || arg === '--concurrency' || arg === '--users') {
     cliConcurrency = args[++i];
+  } else if (arg === '-b' || arg === '--benchmark') {
+    cliFullBenchmark = true;
+    if (args[i + 1] && /^\d+(,\d+)*$/.test(args[i + 1])) {
+      cliConcurrency = args[++i];
+    }
   } else if (arg === '--duration') {
     cliDuration = args[++i];
   } else if (arg === '-o' || arg === '--output') {
@@ -58,8 +64,12 @@ for (let i = 0; i < args.length; i++) {
     cliMeasuredRuns = args[++i];
   } else if (arg === '--warmup') {
     cliWarmupRuns = args[++i];
-  } else if (!arg.startsWith('-') && !cliSqlFile) {
-    cliSqlFile = arg;
+  } else if (!arg.startsWith('-')) {
+    if (/^\d+(,\d+)*$/.test(arg)) {
+      cliConcurrency = arg;
+    } else if (!cliSqlFile) {
+      cliSqlFile = arg;
+    }
   }
 }
 
@@ -70,27 +80,28 @@ if (showHelp) {
 ===================================================================
 
 Usage:
-  node index.js [sql_file] [options]
-  npm start -- [sql_file] [options]
-  npx pg-benchmark [sql_file] [options]
+  node index.js [sql_file] [dummy_user_count] [options]
+  npm start -- [sql_file] [dummy_user_count] [options]
+  npx pg-benchmark [sql_file] [dummy_user_count] [options]
 
 Examples:
-  node index.js                         (Automatically benchmarks ALL .sql files in repo)
-  node index.js queries.sql             (Benchmarks specific .sql file)
-  node index.js --database my_db --concurrency 10,25,50
+  node index.js 1500                    (Runs ONLY the 1500 user load test)
+  node index.js --benchmark 1500        (Runs FULL single-query benchmark AND 1500 user load test)
+  node index.js queries.sql -b 50       (Runs FULL benchmark on queries.sql with 50 users)
   node index.js --query "SELECT count(*) FROM information_schema.tables;" --output report.xlsx
 
 Options:
   [sql_file], -f, --file <path>   Path to .sql file containing query/queries
+  [dummyuser_count], -c, --users  Number of simulated concurrent dummy users/connections (e.g. 50 or 1500)
+  -b, --benchmark [count]         Force FULL single-query profiling + user load test
   -q, --query "<sql>"             Raw SQL statement to benchmark
   -d, --database <name>           PostgreSQL database name
   -h, --host <host>               PostgreSQL host (default: localhost)
   -p, --port <port>               PostgreSQL port (default: 5432)
   -u, --user <user>               PostgreSQL username
   -W, --password <pass>           PostgreSQL password
-  -c, --concurrency <levels>      Concurrency levels (e.g., "1,5,10,25,50")
   --duration <seconds>            Duration per concurrency level in seconds
-  -o, --output <filename>         Excel report filename (default: benchmark-report.xlsx)
+  -o, --output <filename>         Excel report filename (auto-generated based on user count if omitted)
   --runs <count>                  Measured runs per query (default: 100)
   --warmup <count>                Warmup runs per query (default: 10)
   --help                          Display this help card
@@ -110,25 +121,6 @@ function parseSqlFile(filePath) {
     .filter((s) => s.length > 0);
 }
 
-// Helper to recursively discover all .sql files in repository
-function discoverSqlFiles(dir) {
-  let results = [];
-  if (!fs.existsSync(dir)) return results;
-  const list = fs.readdirSync(dir);
-  list.forEach((file) => {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
-    if (stat && stat.isDirectory()) {
-      if (file !== 'node_modules' && file !== '.git') {
-        results = results.concat(discoverSqlFiles(filePath));
-      }
-    } else if (file.endsWith('.sql')) {
-      results.push(filePath);
-    }
-  });
-  return results;
-}
-
 // ------------------------------------------------------------------------------
 // Load Queries
 // ------------------------------------------------------------------------------
@@ -139,7 +131,6 @@ if (cliRawQuery) {
 }
 
 if (cliSqlFile) {
-  // User explicitly specified a single SQL file
   if (fs.existsSync(cliSqlFile)) {
     const fileQueries = parseSqlFile(cliSqlFile);
     customQueries = [...customQueries, ...fileQueries];
@@ -152,16 +143,17 @@ if (cliSqlFile) {
   customQueries = [...customQueries, ...fileQueries];
   console.log(`Loaded ${fileQueries.length} query statement(s) from env file: ${path.basename(process.env.CUSTOM_QUERIES_FILE)}`);
 } else {
-  // Automatically discover and aggregate queries from ALL .sql files in repository
-  const repoRoot = path.join(__dirname, '..');
-  const sqlFiles = discoverSqlFiles(repoRoot);
-  if (sqlFiles.length > 0) {
-    console.log(`Discovered ${sqlFiles.length} .sql file(s) in repository: ${sqlFiles.map((f) => path.basename(f)).join(', ')}`);
-    for (const sqlFile of sqlFiles) {
-      const fileQueries = parseSqlFile(sqlFile);
-      console.log(`  Loaded ${fileQueries.length} statement(s) from ${path.basename(sqlFile)}`);
-      customQueries = [...customQueries, ...fileQueries];
-    }
+  // If no SQL file argument is provided, default to default_queries.sql (or queries.sql)
+  const defaultFile = fs.existsSync(path.join(__dirname, '..', 'default_queries.sql'))
+    ? path.join(__dirname, '..', 'default_queries.sql')
+    : fs.existsSync(path.join(__dirname, '..', 'queries.sql'))
+      ? path.join(__dirname, '..', 'queries.sql')
+      : null;
+
+  if (defaultFile) {
+    const fileQueries = parseSqlFile(defaultFile);
+    customQueries = [...customQueries, ...fileQueries];
+    console.log(`Loaded ${fileQueries.length} query statement(s) from default file: ${path.basename(defaultFile)}`);
   }
 }
 
@@ -186,6 +178,24 @@ if (!customQueries.length) {
   console.log(`Loaded ${customQueries.length} universal default PostgreSQL queries.`);
 }
 
+const concurrencyLevels = (cliConcurrency || process.env.CONCURRENCY_LEVELS || '')
+  .split(',')
+  .map((s) => parseInt(s.trim(), 10))
+  .filter((n) => Number.isFinite(n) && n > 0);
+
+// Dynamic Report Filename Construction
+let defaultOutputFile = 'benchmark-report.xlsx';
+if (cliConcurrency) {
+  const usersTag = concurrencyLevels.join('-');
+  const sqlTag = cliSqlFile ? `-${path.basename(cliSqlFile, '.sql')}` : '';
+  defaultOutputFile = `benchmark-report${sqlTag}-${usersTag}users.xlsx`;
+} else if (cliSqlFile) {
+  const sqlTag = path.basename(cliSqlFile, '.sql');
+  defaultOutputFile = `benchmark-report-${sqlTag}.xlsx`;
+}
+
+const outputFile = cliOutput || (process.env.OUTPUT_FILE && process.env.OUTPUT_FILE !== 'benchmark-report.xlsx' ? process.env.OUTPUT_FILE : defaultOutputFile);
+
 const config = {
   pg: {
     host: cliHost || process.env.PGHOST || 'localhost',
@@ -200,14 +210,12 @@ const config = {
   warmupRuns: int(cliWarmupRuns || process.env.WARMUP_RUNS, 10),
   measuredRuns: int(cliMeasuredRuns || process.env.MEASURED_RUNS, 100),
   runColdCacheTest: bool(process.env.RUN_COLD_CACHE_TEST, false),
-  concurrencyLevels: (cliConcurrency || process.env.CONCURRENCY_LEVELS || '')
-    .split(',')
-    .map((s) => parseInt(s.trim(), 10))
-    .filter((n) => Number.isFinite(n) && n > 0),
+  concurrencyLevels,
   concurrencyDurationSeconds: int(cliDuration || process.env.CONCURRENCY_DURATION_SECONDS, 5),
   concurrencyQuery: process.env.CONCURRENCY_QUERY || 'top',
   customQueries,
-  outputFile: cliOutput || process.env.OUTPUT_FILE || 'benchmark-report.xlsx',
+  fullBenchmark: cliFullBenchmark,
+  outputFile,
 };
 
 if (!config.pg.database) {

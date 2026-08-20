@@ -1,6 +1,19 @@
 # PostgreSQL Query Performance Benchmark Tool (pg-benchmark) - Complete Guide & Parameter Reference
 
-This document explains **what each report sheet shows**, **what every column name denotes**, **the technical meaning of metrics**, **how to judge performance**, and **what happens if Docker is not used**.
+This document explains **execution modes & CLI usage**, **what each report sheet shows**, **what every column name denotes**, **the technical meaning of metrics**, **how to judge performance**, and **what happens if Docker is not used**.
+
+---
+
+## Quick Command & Execution Mode Reference
+
+| Command | Execution Mode & Behavior | Excel Report Name Generated |
+|---|---|---|
+| `node index.js` | **Default Mode**: Discovers `.sql` files, runs single-query profiling (`CQ01...`, `Q01...`). | `benchmark-report.xlsx` |
+| `node index.js 1500` | **Fast User Load Test Mode**: Skips single-query profiling loop, runs **ONLY** 1500 user load test directly. | `benchmark-report-1500users.xlsx` |
+| `node index.js --benchmark 1500`<br>`node index.js -b 1500` | **Full Benchmark Mode**: Runs **BOTH** full single-query profiling **AND** 1500 user load test. | `benchmark-report-1500users.xlsx` |
+| `node index.js queries.sql 50` | Fast 50 user load test on [queries.sql](file:///home/ved1345/Documents/Emgage/postgress_test/pg-benchmark/queries.sql). | `benchmark-report-queries-50users.xlsx` |
+| `node index.js queries.sql -b 50` | Full single-query profiling + 50 user load test on `queries.sql`. | `benchmark-report-queries-50users.xlsx` |
+| `node index.js -o custom.xlsx` | Benchmark run with explicit output file name `-o`. | `custom.xlsx` |
 
 ---
 
